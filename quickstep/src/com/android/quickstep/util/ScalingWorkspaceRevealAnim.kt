@@ -26,6 +26,7 @@ import android.graphics.RectF
 import android.util.Log
 import android.view.SurfaceControl
 import android.view.View
+import android.view.animation.OvershootInterpolator
 import android.view.animation.PathInterpolator
 import androidx.core.graphics.transform
 import androidx.core.view.isVisible
@@ -66,11 +67,12 @@ class ScalingWorkspaceRevealAnim(
 ) {
     companion object {
         private const val FADE_DURATION_MS = 200L
-        private const val SCALE_DURATION_MS = 1000L
+        private const val SCALE_DURATION_MS = 660L
         private const val MAX_ALPHA = 1f
         private const val MIN_ALPHA = 0f
         internal const val MAX_SIZE = 1f
-        internal const val MIN_SIZE = 0.85f
+        internal const val MIN_SIZE = 0.94f
+        private val WORKSPACE_SCALE_INTERPOLATOR = OvershootInterpolator(0.55f)
 
         /**
          * Custom interpolator for both the home and wallpaper scaling. Necessary because EMPHASIZED
@@ -135,14 +137,14 @@ class ScalingWorkspaceRevealAnim(
             WORKSPACE_SCALE_PROPERTY_FACTORY[SCALE_INDEX_WORKSPACE_STATE],
             fromSize,
             MAX_SIZE,
-            SCALE_INTERPOLATOR,
+            WORKSPACE_SCALE_INTERPOLATOR,
         )
         animation.addFloat(
             hotseat,
             HOTSEAT_SCALE_PROPERTY_FACTORY[SCALE_INDEX_WORKSPACE_STATE],
             fromSize,
             MAX_SIZE,
-            SCALE_INTERPOLATOR,
+            WORKSPACE_SCALE_INTERPOLATOR,
         )
 
         if (playAlphaReveal) {

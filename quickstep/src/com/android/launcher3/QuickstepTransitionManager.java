@@ -40,7 +40,6 @@ import static android.window.TransitionFilter.CONTAINER_ORDER_TOP;
 import static com.android.app.animation.Interpolators.ACCELERATE_1_5;
 import static com.android.app.animation.Interpolators.AGGRESSIVE_EASE;
 import static com.android.app.animation.Interpolators.DECELERATE_1_5;
-import static com.android.app.animation.Interpolators.DECELERATE_1_7;
 import static com.android.app.animation.Interpolators.EXAGGERATED_EASE;
 import static com.android.app.animation.Interpolators.LINEAR;
 import static com.android.internal.util.LatencyTracker.ACTION_DESKTOP_MODE_EXIT_MODE_ON_LAST_WINDOW_CLOSE;
@@ -207,10 +206,10 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      */
     public static final int STATUS_BAR_TRANSITION_PRE_DELAY = 96;
 
-    public static final long APP_LAUNCH_DURATION = 500;
+    public static final long APP_LAUNCH_DURATION = 440;
 
-    private static final long APP_LAUNCH_ALPHA_DURATION = 50;
-    private static final long APP_LAUNCH_ALPHA_START_DELAY = 25;
+    private static final long APP_LAUNCH_ALPHA_DURATION = 68;
+    private static final long APP_LAUNCH_ALPHA_START_DELAY = 12;
 
     public static final int ANIMATION_NAV_FADE_IN_DURATION = 266;
     public static final int ANIMATION_NAV_FADE_OUT_DURATION = 133;
@@ -221,9 +220,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     public static final Interpolator NAV_FADE_OUT_INTERPOLATOR =
             new PathInterpolator(0.2f, 0f, 1f, 1f);
 
-    public static final int RECENTS_LAUNCH_DURATION = 336;
+    public static final int RECENTS_LAUNCH_DURATION = 344;
     private static final int LAUNCHER_RESUME_START_DELAY = 100;
-    private static final int CLOSING_TRANSITION_DURATION_MS = 250;
+    private static final int CLOSING_TRANSITION_DURATION_MS = 300;
     public static final int SPLIT_LAUNCH_DURATION = 370;
     public static final int SPLIT_DIVIDER_ANIM_DURATION = 100;
 
@@ -235,7 +234,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     // is solved.
     private static final int TASKBAR_TO_HOME_DURATION_FAST = 300;
     private static final int TASKBAR_TO_HOME_DURATION_SLOW = 1000;
-    protected static final int CONTENT_SCALE_DURATION = 350;
+    protected static final int CONTENT_SCALE_DURATION = 300;
 
     private static final int MAX_NUM_TASKS = 5;
 
@@ -1677,16 +1676,17 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         float startShadowRadius = areAllTargetsTranslucent(appTargets) ? 0 : mMaxShadowRadius;
         closingAnimator.setDuration(duration);
         boolean isFreeform = isFreeformAnimation(appTargets);
-        float translateY = isFreeform ? mClosingFreeformWindowTransY : mClosingWindowTransY;
-        float endScale = isFreeform ? 0.95f : 1f;
+        float translateY =
+                (isFreeform ? mClosingFreeformWindowTransY : mClosingWindowTransY) * 0.9f;
+        float endScale = isFreeform ? 0.978f : 0.992f;
         Interpolator alphaInterpolator = isFreeform
-                ? clampToDuration(LINEAR, 0, 100, duration)
-                : clampToDuration(LINEAR, 25, 125, duration);
+                ? clampToDuration(LINEAR, 16, 152, duration)
+                : clampToDuration(LINEAR, 40, 196, duration);
         closingAnimator.addUpdateListener(new MultiValueUpdateListener() {
-            FloatProp mDy = new FloatProp(0, translateY, DECELERATE_1_7);
-            FloatProp mScale = new FloatProp(1f, endScale, DECELERATE_1_7);
+            FloatProp mDy = new FloatProp(0, translateY, DECELERATE_1_5);
+            FloatProp mScale = new FloatProp(1f, endScale, DECELERATE_1_5);
             FloatProp mAlpha = new FloatProp(1f, 0f, alphaInterpolator);
-            FloatProp mShadowRadius = new FloatProp(startShadowRadius, 0, DECELERATE_1_7);
+            FloatProp mShadowRadius = new FloatProp(startShadowRadius, 0, DECELERATE_1_5);
 
             @Override
             public void onUpdate(float percent, boolean initOnly) {
