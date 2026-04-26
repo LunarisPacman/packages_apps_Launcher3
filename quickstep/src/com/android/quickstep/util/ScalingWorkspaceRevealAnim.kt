@@ -71,20 +71,19 @@ class ScalingWorkspaceRevealAnim(
         private const val MAX_ALPHA = 1f
         private const val MIN_ALPHA = 0f
         internal const val MAX_SIZE = 1f
-        internal const val MIN_SIZE = 0.90f
+        internal const val MIN_SIZE = 0.88f
         private val WORKSPACE_SCALE_INTERPOLATOR = OvershootInterpolator(1.35f)
 
         /**
-         * Custom interpolator for both the home and wallpaper scaling. Necessary because EMPHASIZED
-         * is too aggressive, but EMPHASIZED_DECELERATE is too soft.
+         * Custom interpolator for both the home and wallpaper scaling.
          */
         @JvmField
         val SCALE_INTERPOLATOR =
             PathInterpolator(
                 Path().apply {
                     moveTo(0f, 0f)
-                    cubicTo(0.045f, 0.0356f, 0.0975f, 0.2055f, 0.15f, 0.3952f)
-                    cubicTo(0.235f, 0.6855f, 0.235f, 1f, 1f, 1f)
+                    cubicTo(0.05f, 0f, 0.133333f, 0.06f, 0.166667f, 0.4f)
+                    cubicTo(0.208333f, 0.82f, 0.25f, 1f, 1f, 1f)
                 }
             )
 
