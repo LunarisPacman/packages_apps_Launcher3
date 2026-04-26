@@ -67,12 +67,12 @@ class ScalingWorkspaceRevealAnim(
 ) {
     companion object {
         private const val FADE_DURATION_MS = 200L
-        private const val SCALE_DURATION_MS = 660L
+        private const val SCALE_DURATION_MS = 700L
         private const val MAX_ALPHA = 1f
         private const val MIN_ALPHA = 0f
         internal const val MAX_SIZE = 1f
-        internal const val MIN_SIZE = 0.94f
-        private val WORKSPACE_SCALE_INTERPOLATOR = OvershootInterpolator(0.55f)
+        internal const val MIN_SIZE = 0.90f
+        private val WORKSPACE_SCALE_INTERPOLATOR = OvershootInterpolator(1.35f)
 
         /**
          * Custom interpolator for both the home and wallpaper scaling. Necessary because EMPHASIZED
