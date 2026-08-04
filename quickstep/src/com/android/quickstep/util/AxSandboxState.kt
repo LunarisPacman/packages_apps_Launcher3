@@ -58,17 +58,30 @@ constructor(
     }
 
     init {
-        registerLockListener()
-        context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(AxSandboxManager.SETTING_SANDBOX_CONFIG),
-            false,
-            configObserver,
-        )
-        lifecycle.addCloseable {
-            unregisterLockListener()
-            context.contentResolver.unregisterContentObserver(configObserver)
+        if (sandboxManager != null) {
+            try {
+                registerLockListener()
+                context.contentResolver.registerContentObserver(
+                    Settings.Secure.getUriFor(AxSandboxManager.SETTING_SANDBOX_CONFIG),
+                    false,
+                    configObserver,
+                )
+            } catch (e: NoClassDefFoundError) {
+                // The underlying AIDL class (e.g. IAxSandboxManager) is missing from the
+                // framework on this device — sandbox features are unavailable, safe to ignore.
+                Log.w(TAG, "AxSandboxManager AIDL unavailable on this device, disabling", e)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to initialise AxSandboxState", e)
+            }
+            lifecycle.addCloseable {
+                try {
+                    unregisterLockListener()
+                    context.contentResolver.unregisterContentObserver(configObserver)
+                } catch (_: Exception) { /* best-effort cleanup */ }
+            }
         }
     }
+
 
     fun addChangeListener(listener: Runnable) {
         listeners.addIfAbsent(listener)
