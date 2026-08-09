@@ -65,13 +65,14 @@ class ScalingWorkspaceRevealAnim(
     playBlur: Boolean = true,
 ) {
     companion object {
-        private const val FADE_DURATION_MS = 150L
-        private const val SCALE_DURATION_MS = 800L
+        private const val FADE_DURATION_MS = 180L
+        private const val SCALE_DURATION_MS = 880L
+        private const val WALLPAPER_ZOOM_DURATION_MS = 1500L
         private const val HOTSEAT_FADE_DELAY_MS = 30L
         private const val MAX_ALPHA = 1f
         private const val MIN_ALPHA = 0f
         internal const val MAX_SIZE = 1f
-        internal const val MIN_SIZE = 0.92f
+        internal const val MIN_SIZE = 0.85f
 
         /**
          * Custom interpolator for both the home and wallpaper scaling. Necessary because EMPHASIZED
@@ -87,7 +88,7 @@ class ScalingWorkspaceRevealAnim(
                 }
             )
 
-        val BLUR_INTERPOLATOR = Interpolators.clampToProgress(EMPHASIZED, 0f, 0.666f)
+        val BLUR_INTERPOLATOR = Interpolators.clampToProgress(EMPHASIZED, 0f, 0.777f)
     }
 
     private val animation = PendingAnimation(SCALE_DURATION_MS)
@@ -171,7 +172,7 @@ class ScalingWorkspaceRevealAnim(
         }
 
         val transitionConfig = StateAnimationConfig()
-        transitionConfig.duration = SCALE_DURATION_MS
+        transitionConfig.duration = WALLPAPER_ZOOM_DURATION_MS
 
         var depthController: DepthController? = null
         if (playBlur) {
@@ -196,6 +197,7 @@ class ScalingWorkspaceRevealAnim(
                     }
                 )
             val blurAnimator = ValueAnimator.ofFloat(1f, 0f)
+            blurAnimator.duration = WALLPAPER_ZOOM_DURATION_MS
             blurAnimator.setInterpolator(BLUR_INTERPOLATOR)
             var lastBlurRadius = -1
             blurAnimator.addUpdateListener {
@@ -258,12 +260,40 @@ class ScalingWorkspaceRevealAnim(
         // Needed to avoid text artefacts during the scale animation.
         workspace.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         hotseat.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
+        var isFinalized = false
+        val finalizeCleanup = Runnable {
+            if (isFinalized) return@Runnable
+            isFinalized = true
+            Log.d(TAG, "finalizeCleanup, workspace and hotseat are visible")
+            workspace.alpha = MAX_ALPHA
+            hotseat.alpha = MAX_ALPHA
+            if (!hotseat.isVisible || !workspace.isVisible) {
+                Log.e(
+                    TAG,
+                    "Unexpected invisibility after animation end:" +
+                        " workspace.isVisible=${workspace.isVisible}" +
+                        ", workspace.alpha=${workspace.alpha}" +
+                        ", hotseat.isVisible=${hotseat.isVisible}" +
+                        ", hotseat.alpha=${hotseat.alpha}",
+                    Exception(),
+                )
+            }
+            workspace.setLayerType(View.LAYER_TYPE_NONE, null)
+            hotseat.setLayerType(View.LAYER_TYPE_NONE, null)
+            Animations.setOngoingAnimation(workspace, animation = null)
+            Animations.setOngoingAnimation(hotseat, animation = null)
+            removeBlurLayer()
+            depthController?.pauseBlursOnWindows(false)
+        }
+
         animation.addListener(
             object : AnimatorListenerAdapter() {
                 override fun onAnimationCancel(animation: Animator) {
                     super.onAnimationCancel(animation)
                     Log.d(TAG, "onAnimationCancel")
                     applyBlur(0f, 0f)
+                    finalizeCleanup.run()
                 }
 
                 override fun onAnimationPause(animation: Animator) {
@@ -273,38 +303,7 @@ class ScalingWorkspaceRevealAnim(
             }
         )
 
-        animation.addListener(
-            AnimatorListeners.forEndCallback(
-                Runnable {
-                    Log.d(TAG, "onAnimationEnd, workspace and hotseat are visible")
-                    // Ensure that the workspace and the hotseat are visible at the end
-                    // of the animation regardless of what happens with this animation
-                    // itself.
-                    workspace.alpha = MAX_ALPHA
-                    hotseat.alpha = MAX_ALPHA
-                    if (!hotseat.isVisible || !workspace.isVisible) {
-                        Log.e(
-                            TAG,
-                            "Unexpected invisibility after animation end:" +
-                                " workspace.isVisible=${workspace.isVisible}" +
-                                ", workspace.alpha=${workspace.alpha}" +
-                                ", hotseat.isVisible=${hotseat.isVisible}" +
-                                ", hotseat.alpha=${hotseat.alpha}",
-                            Exception(),
-                        )
-                    }
-
-                    workspace.setLayerType(View.LAYER_TYPE_NONE, null)
-                    hotseat.setLayerType(View.LAYER_TYPE_NONE, null)
-
-                    // Reset the cached animations.
-                    Animations.setOngoingAnimation(workspace, animation = null)
-                    Animations.setOngoingAnimation(hotseat, animation = null)
-                    removeBlurLayer()
-                    depthController?.pauseBlursOnWindows(false)
-                }
-            )
-        )
+        animation.addListener(AnimatorListeners.forEndCallback(finalizeCleanup))
     }
 
     fun getAnimators(): AnimatorSet {
@@ -323,14 +322,12 @@ class ScalingWorkspaceRevealAnim(
     }
 
     private fun addBlurLayer() {
-        if (!Flags.blurredHomeAnimation()) {
-            return
-        }
         val parent = launcher.dragLayer.viewRootImpl?.surfaceControl ?: return
         if (!parent.isValid) {
             Log.e(TAG, "Parent surface is not ready at the moment. Can't apply blur.")
             return
         }
+        notifyRendererOfUpcomingBlur()
         val blurLayer =
             SurfaceControl.Builder()
                 .setName("Home to launcher blur layer")
@@ -338,6 +335,7 @@ class ScalingWorkspaceRevealAnim(
                 .setParent(parent)
                 .setOpaque(false)
                 .setHidden(false)
+                .setEffectLayer()
                 .build()
 
         // Schedule the initial setup of the blur layer.
@@ -346,6 +344,16 @@ class ScalingWorkspaceRevealAnim(
         surfaceTransactionApplier.scheduleApply(setupTransaction)
 
         this.blurLayer = blurLayer
+    }
+
+    private fun notifyRendererOfUpcomingBlur() {
+        val viewRootImpl = launcher.dragLayer.viewRootImpl ?: return
+        try {
+            viewRootImpl.notifyRendererForGpuLoadUp("applyBlur")
+            viewRootImpl.notifyRendererOfExpensiveFrame("applyBlur")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to notify renderer of upcoming blur frame", e)
+        }
     }
 
     private fun removeBlurLayer() {

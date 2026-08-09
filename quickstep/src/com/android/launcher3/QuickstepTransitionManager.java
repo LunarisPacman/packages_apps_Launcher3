@@ -212,7 +212,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      */
     public static final int STATUS_BAR_TRANSITION_PRE_DELAY = 96;
 
-    public static final long APP_LAUNCH_DURATION = 480;
+    public static final long APP_LAUNCH_DURATION = 450;
 
     private static final long APP_LAUNCH_ALPHA_DURATION = 125;
     private static final long APP_LAUNCH_ALPHA_START_DELAY = 25;
@@ -331,7 +331,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             mSystemUiProxy.setStartingWindowListener(mStartingWindowListener);
         }
 
-        mOpeningXInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
+        mOpeningXInterpolator = new PathInterpolator(0.05f, 0.7f, 0.1f, 1f);
         mOpeningInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
         mCoordinateTransfer = new RemoteAnimationCoordinateTransfer(mLauncher);
         mLatencyTracker = LatencyTracker.getInstance(launcher);
@@ -1431,12 +1431,30 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     .setEffectLayer()
                     .build();
 
-            backgroundRadiusAnim.addListener(AnimatorListeners.forEndCallback(() -> {
-                // Use try-with-resources to ensure the transaction gets closed.
+            Runnable removeDimLayer = () -> {
                 try (SurfaceControl.Transaction transaction = new SurfaceControl.Transaction()) {
                     transaction.remove(dimLayer).apply();
                 }
-            }));
+            };
+            backgroundRadiusAnim.addListener(new AnimatorListenerAdapter() {
+                private boolean mRemoved = false;
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (!mRemoved) {
+                        mRemoved = true;
+                        removeDimLayer.run();
+                    }
+                }
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    if (!mRemoved) {
+                        mRemoved = true;
+                        removeDimLayer.run();
+                    }
+                }
+            });
         }
 
         return backgroundRadiusAnim;
@@ -1887,7 +1905,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                         tmpPos.set(target.position.x, target.position.y);
                     }
 
-                    fallbackCrop.set(target.localBounds);
+                    if (target.localBounds != null) {
+                        fallbackCrop.set(target.localBounds);
+                    } else {
+                        fallbackCrop.set(target.screenSpaceBounds);
+                    }
                     fallbackCrop.offsetTo(0, 0);
                     if (target.mode == MODE_CLOSING) {
                         tmpRect.set(target.screenSpaceBounds);
@@ -1915,9 +1937,10 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 }
                 if (scrimLayer != null && scrimLayer.isValid()) {
                     float t = percent;
+                    float blurT = (float) Math.sqrt(t);
                     transaction.forSurface(scrimLayer)
                             .setAlpha(peakScrimAlpha * t)
-                            .setBackgroundBlurRadius((int) (mMaxBlurRadius * t));
+                            .setBackgroundBlurRadius((int) (mMaxBlurRadius * blurT));
                 }
                 surfaceApplier.scheduleApply(transaction);
             }
@@ -2551,6 +2574,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         private final Rect mWindowOriginalBounds = new Rect();
 
         private float mLastCornerRadius = -1f;
+        private int mLastBlurRadius = -1;
         private final Rect mTmpRect = new Rect();
         private final SurfaceTransaction mTransaction = new SurfaceTransaction();
 
@@ -2598,6 +2622,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         private static final Interpolator CORNER_LEAD_INTERPOLATOR =
         new PathInterpolator(0.05f, 0f, 0.1f, 1f);
+        private static final Interpolator SCRIM_BLUR_INTERPOLATOR =
+                Interpolators.clampToProgress(DECELERATE_1_5, 0f, 0.85f);
 
         private final SurfaceControl mScrimLayer;
         private final float mPeakScrimAlpha = getScrimAlpha();
@@ -2652,7 +2678,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                             .setAlpha(getWindowAlpha(progress));
 
                     float cornerRadius = getCornerRadius(progress) / scale;
-                    if (Math.abs(mLastCornerRadius - cornerRadius) >= 4f || progress >= 1f) {
+            float snapThreshold = progress > 0.7f ? 1.5f : 4f;
+            if (Math.abs(mLastCornerRadius - cornerRadius) >= snapThreshold || progress >= 1f) {
                         builder.setCornerRadius(cornerRadius);
                         mLastCornerRadius = cornerRadius;
                     }
@@ -2663,10 +2690,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 }
             }
             if (mScrimLayer != null && mScrimLayer.isValid()) {
-                float t = Math.min(progress, 1f);
-                mTransaction.forSurface(mScrimLayer)
-                        .setAlpha(mPeakScrimAlpha * t)
-                        .setBackgroundBlurRadius((int) (mMaxBlurRadius * t));
+                float t = SCRIM_BLUR_INTERPOLATOR.getInterpolation(Math.min(progress, 1f));
+                int blurRadius = (int) (mMaxBlurRadius * t);
+                SurfaceProperties scrimBuilder = mTransaction.forSurface(mScrimLayer)
+                        .setAlpha(mPeakScrimAlpha * t);
+                if (Math.abs(mLastBlurRadius - blurRadius) >= 4 || progress >= 1f) {
+                    scrimBuilder.setBackgroundBlurRadius(blurRadius);
+                    mLastBlurRadius = blurRadius;
+                }
             }
             mSurfaceApplier.scheduleApply(mTransaction);
         }
