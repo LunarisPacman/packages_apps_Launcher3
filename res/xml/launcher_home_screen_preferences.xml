@@ -129,7 +129,7 @@
             android:key="pref_app_launch_blur"
             android:title="@string/pref_app_launch_blur_title"
             android:summary="@string/pref_app_launch_blur_summary"
-            android:defaultValue="false"
+            android:defaultValue="true"
             android:persistent="true"
             launcher:iconSpaceReserved="false" />
 

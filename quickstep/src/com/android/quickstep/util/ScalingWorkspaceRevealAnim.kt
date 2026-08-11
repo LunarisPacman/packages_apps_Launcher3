@@ -38,6 +38,7 @@ import com.android.launcher3.LauncherAnimUtils.HOTSEAT_SCALE_PROPERTY_FACTORY
 import com.android.launcher3.LauncherAnimUtils.SCALE_INDEX_WORKSPACE_STATE
 import com.android.launcher3.LauncherAnimUtils.VIEW_ALPHA
 import com.android.launcher3.LauncherAnimUtils.WORKSPACE_SCALE_PROPERTY_FACTORY
+import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.anim.AnimatorListeners
@@ -321,7 +322,14 @@ class ScalingWorkspaceRevealAnim(
         Animations.setOngoingAnimation(launcher.hotseat, animators)
     }
 
+    private fun isAppLaunchBlurEnabled(): Boolean {
+        return LauncherPrefs.get(launcher).get(LauncherPrefs.APP_LAUNCH_BLUR_ENABLED)
+    }
+
     private fun addBlurLayer() {
+        if (!isAppLaunchBlurEnabled()) {
+            return
+        }
         val parent = launcher.dragLayer.viewRootImpl?.surfaceControl ?: return
         if (!parent.isValid) {
             Log.e(TAG, "Parent surface is not ready at the moment. Can't apply blur.")
