@@ -222,7 +222,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      * than the icon-unfurl animation, matching OxygenOS/ColorOS.
      */
     private static final long WALLPAPER_ZOOM_OPEN_DURATION = APP_LAUNCH_DURATION + 150;
-    private static final Interpolator WALLPAPER_ZOOM_INTERPOLATOR = DECELERATE_1_5;
+    private static final Interpolator WALLPAPER_ZOOM_INTERPOLATOR = LINEAR;
 
     private static final long APP_LAUNCH_ALPHA_DURATION = 125;
     private static final long APP_LAUNCH_ALPHA_START_DELAY = 25;
@@ -1134,13 +1134,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         // Since we added a start delay, call update here to init the FloatingIconView properly.
         listener.onUpdate(0, true /* initOnly */);
 
-        // If app targets are translucent, do not animate the background as it causes a visible
-        // flicker when it resets itself at the end of its animation.
-        if (appTargetsAreTranslucent || !launcherClosing) {
-            animatorSet.play(appAnimator);
-        } else {
-            animatorSet.playTogether(appAnimator, getBackgroundAnimator());
-        }
+        animatorSet.play(appAnimator);
         // Only zoom the wallpaper when Launcher (and therefore the wallpaper behind it) is
         // actually visible and about to be covered -- e.g. skip for translucent app targets
         // where the wallpaper stays visible anyway.
