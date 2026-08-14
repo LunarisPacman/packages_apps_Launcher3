@@ -214,7 +214,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      */
     public static final int STATUS_BAR_TRANSITION_PRE_DELAY = 96;
 
-    public static final long APP_LAUNCH_DURATION = 450;
+    public static final long APP_LAUNCH_DURATION = 420;
 
     /**
      * Duration of the wallpaper zoom effect on app open, run as its own animator (independent
@@ -238,7 +238,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     public static final int RECENTS_LAUNCH_DURATION = 336;
     private static final int LAUNCHER_RESUME_START_DELAY = 100;
-    private static final int CLOSING_TRANSITION_DURATION_MS = 280;
+    private static final int CLOSING_TRANSITION_DURATION_MS = 300;
     public static final int SPLIT_LAUNCH_DURATION = 370;
     public static final int SPLIT_DIVIDER_ANIM_DURATION = 100;
 
@@ -351,8 +351,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             mSystemUiProxy.setStartingWindowListener(mStartingWindowListener);
         }
 
-        mOpeningXInterpolator = new PathInterpolator(0.05f, 0.7f, 0.1f, 1f);
-        mOpeningInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
+        mOpeningXInterpolator = AnimationUtils.loadInterpolator(launcher, R.interpolator.app_open_x);
+        mOpeningInterpolator = new SpringInterpolator(0.65, 1.0);
         mCoordinateTransfer = new RemoteAnimationCoordinateTransfer(mLauncher);
         mLatencyTracker = LatencyTracker.getInstance(launcher);
 
