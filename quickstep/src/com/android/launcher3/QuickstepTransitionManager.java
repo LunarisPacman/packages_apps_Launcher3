@@ -940,28 +940,31 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         MultiValueUpdateListener listener = new MultiValueUpdateListener() {
             FloatProp mDx = new FloatProp(0, prop.dX, mOpeningXInterpolator);
-            FloatProp mDy = new FloatProp(0, prop.dY, mOpeningInterpolator);
+            FloatProp mDy = new FloatProp(0, prop.dY, DECELERATE_1_5);
 
+            // Only the icon-grow scale gets the spring bounce -- the fluid morph feel.
             FloatProp mIconScaleToFitScreen = new FloatProp(prop.initialAppIconScale,
                     prop.finalAppIconScale, mOpeningInterpolator);
             FloatProp mIconAlpha = new FloatProp(prop.iconAlphaStart, 0f,
                     clampToDuration(LINEAR, APP_LAUNCH_ALPHA_START_DELAY, APP_LAUNCH_ALPHA_DURATION,
                             APP_LAUNCH_DURATION));
 
+            // Corner radius, shadow and crop-rect stay flat -- overshoot here wobbles the
+            // window's actual visible content/edges, not just the icon.
             final Interpolator cornerInterpolator = new PathInterpolator(0.2f, 0f, 0.2f, 1f);
             FloatProp mWindowRadius = new FloatProp(initialWindowRadius,
-                    getWindowCornerRadius(mLauncher), cornerInterpolator);
+                    getWindowCornerRadius(mLauncher), DECELERATE_1_5);
             FloatProp mShadowRadius = new FloatProp(0, finalShadowRadius,
-                    mOpeningInterpolator);
+                    DECELERATE_1_5);
 
             FloatProp mCropRectCenterX = new FloatProp(prop.cropCenterXStart, prop.cropCenterXEnd,
-                    mOpeningInterpolator);
+                    DECELERATE_1_5);
             FloatProp mCropRectCenterY = new FloatProp(prop.cropCenterYStart, prop.cropCenterYEnd,
-                    mOpeningInterpolator);
+                    DECELERATE_1_5);
             FloatProp mCropRectWidth = new FloatProp(prop.cropWidthStart, prop.cropWidthEnd,
-                    mOpeningInterpolator);
+                    DECELERATE_1_5);
             FloatProp mCropRectHeight = new FloatProp(prop.cropHeightStart, prop.cropHeightEnd,
-                    mOpeningInterpolator);
+                    DECELERATE_1_5);
 
             FloatProp mNavFadeOut = new FloatProp(1f, 0f, clampToDuration(
                     NAV_FADE_OUT_INTERPOLATOR, 20, ANIMATION_NAV_FADE_OUT_DURATION,
@@ -993,7 +996,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                             smallestSize / launcherIconBounds.height());
                     float newDY = windowTargetBounds.centerY() - dragLayerBounds[1]
                             - launcherIconBounds.centerY();
-                    float interpolatedPercent = mOpeningInterpolator.getInterpolation(percent);
+                    float interpolatedPercent = DECELERATE_1_5.getInterpolation(percent);
                     mCropRectCenterY.value = windowTargetBounds.centerY();
                     mCropRectHeight.value = windowIconSize
                             + interpolatedPercent * (windowTargetBounds.height() - windowIconSize);
