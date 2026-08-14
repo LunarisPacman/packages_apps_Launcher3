@@ -260,6 +260,28 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     private static final float MAX_SCRIM_ALPHA_DARK = 0.8f;
     private static final float MAX_SCRIM_ALPHA_LIGHT = 0.2f;
 
+    /**
+     * Damped-harmonic-oscillator interpolator for a subtle OEM-style spring bounce.
+     */
+    private static final class SpringInterpolator implements Interpolator {
+        private final double mDampingRatio;
+        private final double mNumOfCycles;
+
+        SpringInterpolator(double dampingRatio, double numOfCycles) {
+            mDampingRatio = dampingRatio;
+            mNumOfCycles = numOfCycles;
+        }
+
+        @Override
+        public float getInterpolation(float input) {
+            double wn = mNumOfCycles * 2 * Math.PI;
+            double wd = wn * Math.sqrt(Math.max(1e-6, 1 - mDampingRatio * mDampingRatio));
+            double envelope = Math.exp(-mDampingRatio * wn * input);
+            return (float) (1 - envelope * (Math.cos(wd * input)
+                    + (mDampingRatio * wn / wd) * Math.sin(wd * input)));
+        }
+    }
+
     protected final QuickstepLauncher mLauncher;
     protected final DragLayer mDragLayer;
 
@@ -1194,12 +1216,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         mWallpaperZoomFlushPosted = true;
         getWallpaperZoomHandler().post(() -> {
             mWallpaperZoomFlushPosted = false;
-            try {
-                WindowManagerGlobal.getWindowManagerService().setWallpaperZoomOutForDisplay(
-                        mPendingWallpaperZoomDisplayId, mPendingWallpaperZoom);
-            } catch (RemoteException e) {
-                Log.w(TAG, "Failed to set wallpaper zoom", e);
-            }
+            // The setWallpaperZoomOutForDisplay method does not exist in Lunaris AOSP IWindowManager.
+            // WindowManagerGlobal.getWindowManagerService().setWallpaperZoomOutForDisplay(
+            //         mPendingWallpaperZoomDisplayId, mPendingWallpaperZoom);
         });
     }
 
