@@ -92,11 +92,13 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.hardware.power.Boost;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.IRemoteCallback;
 import android.os.Looper;
 import android.os.PowerManagerInternal;
 import android.os.RemoteException;
+import android.view.WindowManagerGlobal;
 import android.view.IRemoteAnimationRunner;
 import android.window.IRemoteTransitionFinishedCallback;
 import android.window.TransitionInfo;
@@ -214,6 +216,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     public static final long APP_LAUNCH_DURATION = 450;
 
+    /**
+     * Duration of the wallpaper zoom effect on app open, run as its own animator (independent
+     * of {@link #APP_LAUNCH_DURATION}) so it can be tuned separately -- e.g. to run a bit longer
+     * than the icon-unfurl animation, matching OxygenOS/ColorOS.
+     */
+    private static final long WALLPAPER_ZOOM_OPEN_DURATION = APP_LAUNCH_DURATION + 150;
+    private static final Interpolator WALLPAPER_ZOOM_INTERPOLATOR = DECELERATE_1_5;
+
     private static final long APP_LAUNCH_ALPHA_DURATION = 125;
     private static final long APP_LAUNCH_ALPHA_START_DELAY = 25;
 
@@ -303,6 +313,16 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     private final Interpolator mOpeningInterpolator;
 
     private final SystemUiProxy mSystemUiProxy;
+
+    // Background thread + coalescing state for setWallpaperZoomOutForDisplay Binder calls.
+    // That AIDL method is a blocking two-way call; calling it every animation frame from the
+    // UI thread (as a naive addUpdateListener would) competes with the icon-unfurl/window
+    // animation for the same thread and drops frames, which shows up as a flickery/jumpy zoom.
+    // Route it through a single background thread and only keep the latest requested value.
+    private Handler mWallpaperZoomHandler;
+    private volatile boolean mWallpaperZoomFlushPosted;
+    private volatile float mPendingWallpaperZoom;
+    private volatile int mPendingWallpaperZoomDisplayId;
 
     public QuickstepTransitionManager(QuickstepLauncher launcher) {
         mLauncher = launcher;
@@ -1121,7 +1141,72 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         } else {
             animatorSet.playTogether(appAnimator, getBackgroundAnimator());
         }
+        // Only zoom the wallpaper when Launcher (and therefore the wallpaper behind it) is
+        // actually visible and about to be covered -- e.g. skip for translucent app targets
+        // where the wallpaper stays visible anyway.
+        //
+        // Deliberately NOT added to animatorSet: that set's overall duration gates when this
+        // remote-animation runner reports "finished" back to the system, which un-blocks input
+        // in the newly-opened app. Folding a longer, purely-cosmetic zoom animator into it would
+        // add real launch latency, not just a longer visual effect. Run it standalone instead.
+        if (launcherClosing) {
+            getWallpaperZoomAnimator(true /* isOpening */).start();
+        }
         return animatorSet;
+    }
+
+    /**
+     * Builds a standalone zoom animator for the wallpaper, run alongside (but not tied to the
+     * duration of) the app open/close window animation. {@code isOpening} true zooms the
+     * wallpaper in (1f -> 0f, i.e. away from max zoom-out) as an app launches; false zooms it
+     * back out (0f -> 1f) as an app closes back to the home screen.
+     */
+    private Animator getWallpaperZoomAnimator(boolean isOpening) {
+        final int displayId = mLauncher.getDisplayId();
+        ValueAnimator wallpaperZoomAnim = ValueAnimator.ofFloat(0f, 1f);
+        wallpaperZoomAnim.setDuration(WALLPAPER_ZOOM_OPEN_DURATION);
+        wallpaperZoomAnim.setInterpolator(WALLPAPER_ZOOM_INTERPOLATOR);
+        wallpaperZoomAnim.addUpdateListener(anim -> {
+            final float fraction = (float) anim.getAnimatedValue();
+            final float zoom = isOpening ? (1f - fraction) : fraction;
+            setWallpaperZoomOutSafely(displayId, zoom);
+        });
+        wallpaperZoomAnim.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                setWallpaperZoomOutSafely(displayId, 0f);
+            }
+        });
+        return wallpaperZoomAnim;
+    }
+
+    private void setWallpaperZoomOutSafely(int displayId, float zoom) {
+        mPendingWallpaperZoom = zoom;
+        mPendingWallpaperZoomDisplayId = displayId;
+        if (mWallpaperZoomFlushPosted) {
+            // A flush is already queued on the background thread and will pick up the latest
+            // value above when it runs -- don't stack another Binder call on top of it.
+            return;
+        }
+        mWallpaperZoomFlushPosted = true;
+        getWallpaperZoomHandler().post(() -> {
+            mWallpaperZoomFlushPosted = false;
+            try {
+                WindowManagerGlobal.getWindowManagerService().setWallpaperZoomOutForDisplay(
+                        mPendingWallpaperZoomDisplayId, mPendingWallpaperZoom);
+            } catch (RemoteException e) {
+                Log.w(TAG, "Failed to set wallpaper zoom", e);
+            }
+        });
+    }
+
+    private Handler getWallpaperZoomHandler() {
+        if (mWallpaperZoomHandler == null) {
+            HandlerThread thread = new HandlerThread("WallpaperZoomIpc");
+            thread.start();
+            mWallpaperZoomHandler = new Handler(thread.getLooper());
+        }
+        return mWallpaperZoomHandler;
     }
 
     private boolean isTransientTaskbar() {
@@ -1792,12 +1877,24 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     startWindowCornerRadius));
         }
 
+        // Zoom the wallpaper back out as the app closes. This is a fling/spring animation with
+        // no fixed duration, so drive zoom off its progress callback directly instead of a
+        // separate timed animator like the open side uses.
+        final int wallpaperZoomDisplayId = mLauncher.getDisplayId();
+        anim.addOnUpdateListener((currentRectF, progress) ->
+                setWallpaperZoomOutSafely(wallpaperZoomDisplayId, progress));
+
         // Use a fixed velocity to start the animation.
         animation.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
                 anim.start(mLauncher, mDeviceProfile, velocityPxPerS);
                 boostInteraction(500);
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                setWallpaperZoomOutSafely(wallpaperZoomDisplayId, 0f);
             }
         });
         return anim;
