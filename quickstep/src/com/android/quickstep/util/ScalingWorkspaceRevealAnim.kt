@@ -80,12 +80,12 @@ class ScalingWorkspaceRevealAnim(
          * is too aggressive, but EMPHASIZED_DECELERATE is too soft.
          */
         @JvmField
-        val SCALE_INTERPOLATOR = 
+        val SCALE_INTERPOLATOR =
             PathInterpolator(
                 Path().apply {
                     moveTo(0f, 0f)
-                    cubicTo(0.05f, 0.07f, 0.1f, 0.4f, 0.2f, 0.6f)
-                    cubicTo(0.3f, 0.85f, 0.4f, 1f, 1f, 1f)
+                    cubicTo(0.045f, 0.0356f, 0.0975f, 0.2055f, 0.15f, 0.3952f)
+                    cubicTo(0.235f, 0.6855f, 0.235f, 1f, 1f, 1f)
                 }
             )
 
