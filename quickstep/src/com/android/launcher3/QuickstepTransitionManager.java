@@ -214,14 +214,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      */
     public static final int STATUS_BAR_TRANSITION_PRE_DELAY = 96;
 
-    public static final long APP_LAUNCH_DURATION = 420;
+    public static final long APP_LAUNCH_DURATION = 380;
 
     /**
      * Duration of the wallpaper zoom effect on app open, run as its own animator (independent
      * of {@link #APP_LAUNCH_DURATION}) so it can be tuned separately -- e.g. to run a bit longer
      * than the icon-unfurl animation, matching OxygenOS/ColorOS.
      */
-    private static final long WALLPAPER_ZOOM_OPEN_DURATION = APP_LAUNCH_DURATION + 150;
+    private static final long WALLPAPER_ZOOM_OPEN_DURATION = APP_LAUNCH_DURATION + 100;
     private static final Interpolator WALLPAPER_ZOOM_INTERPOLATOR = DECELERATE_1_5;
 
     private static final long APP_LAUNCH_ALPHA_DURATION = 125;
@@ -238,7 +238,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     public static final int RECENTS_LAUNCH_DURATION = 336;
     private static final int LAUNCHER_RESUME_START_DELAY = 100;
-    private static final int CLOSING_TRANSITION_DURATION_MS = 300;
+    private static final int CLOSING_TRANSITION_DURATION_MS = 270;
     public static final int SPLIT_LAUNCH_DURATION = 370;
     public static final int SPLIT_DIVIDER_ANIM_DURATION = 100;
 
@@ -262,23 +262,33 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     /**
      * Damped-harmonic-oscillator interpolator for a subtle OEM-style spring bounce.
+     * Uses a pre-baked 256-entry lookup table so getInterpolation() is O(1)
+     * with no trigonometry at animation time.
      */
     private static final class SpringInterpolator implements Interpolator {
-        private final double mDampingRatio;
-        private final double mNumOfCycles;
+        private static final int TABLE_SIZE = 256;
+        private final float[] mTable = new float[TABLE_SIZE];
 
         SpringInterpolator(double dampingRatio, double numOfCycles) {
-            mDampingRatio = dampingRatio;
-            mNumOfCycles = numOfCycles;
+            double wn = numOfCycles * 2 * Math.PI;
+            double dSq = 1 - dampingRatio * dampingRatio;
+            double wd = wn * Math.sqrt(Math.max(1e-9, dSq));
+            for (int i = 0; i < TABLE_SIZE; i++) {
+                double t = (double) i / (TABLE_SIZE - 1);
+                double envelope = Math.exp(-dampingRatio * wn * t);
+                mTable[i] = (float) (1.0 - envelope * (
+                        Math.cos(wd * t) + (dampingRatio * wn / wd) * Math.sin(wd * t)));
+            }
         }
 
         @Override
         public float getInterpolation(float input) {
-            double wn = mNumOfCycles * 2 * Math.PI;
-            double wd = wn * Math.sqrt(Math.max(1e-6, 1 - mDampingRatio * mDampingRatio));
-            double envelope = Math.exp(-mDampingRatio * wn * input);
-            return (float) (1 - envelope * (Math.cos(wd * input)
-                    + (mDampingRatio * wn / wd) * Math.sin(wd * input)));
+            if (input <= 0f) return mTable[0];
+            if (input >= 1f) return mTable[TABLE_SIZE - 1];
+            float idx = input * (TABLE_SIZE - 1);
+            int lo = (int) idx;
+            float frac = idx - lo;
+            return mTable[lo] + frac * (mTable[lo + 1] - mTable[lo]);
         }
     }
 
@@ -995,8 +1005,15 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     NAV_FADE_IN_INTERPOLATOR, ANIMATION_DELAY_NAV_FADE_IN,
                     ANIMATION_NAV_FADE_IN_DURATION, APP_LAUNCH_DURATION));
 
-            FloatProp mBlurRadius = new FloatProp(0f, mMaxBlurRadius, DECELERATE_1_5);
-            FloatProp mBlurScrimAlpha = new FloatProp(0f, scrimAlpha, DECELERATE_1_5);
+            // Blur fades in/out over the first 75% of the animation so the GPU is free
+            // during the heaviest crop-rect phase at the end. This prevents jank when
+            // app-launch blur is enabled in Launcher settings.
+            FloatProp mBlurRadius = new FloatProp(0f, mMaxBlurRadius, clampToDuration(
+                    DECELERATE_1_5, 0, (long) (APP_LAUNCH_DURATION * 0.75f),
+                    APP_LAUNCH_DURATION));
+            FloatProp mBlurScrimAlpha = new FloatProp(0f, scrimAlpha, clampToDuration(
+                    DECELERATE_1_5, 0, (long) (APP_LAUNCH_DURATION * 0.75f),
+                    APP_LAUNCH_DURATION));
 
             @Override
             public void onUpdate(float percent, boolean initOnly) {
